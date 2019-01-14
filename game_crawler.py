@@ -126,23 +126,64 @@ class StoneAge:
         logs = self.game_logs(replay_url.format(game_id))
         pickle.dump(logs, open('data/logs.pkl', 'wb'))
 
+        # Log Cleanup
         player_order = [x[0:x.find(' is')] for x in logs if 'is now first player' in x][0:3]
 
+        player_order.insert(0, 'end') # Covers the end of the game flag
+
+        player_nums = [player_order.index(set(x.split()).intersection(set(player_order)).pop()) for x in logs][:]
+        player_order.pop(0)
+
+        for player in player_order:
+            logs = [x.replace(player, 'player') for x in logs]
+
+        values = [int((re.findall('\d+', x) or [-1])[0]) for x in logs]
+
+        logs = [re.sub(r'\d', 'i', x) for x in logs]
+
+        df = pd.DataFrame({
+            'player_number': player_nums,
+            'value': values,
+            'action_name': logs,
+        })
+
+        df.loc[df['action_name'] == 'player is now first player', 'new_turn'] = 1
+        df['turn_number'] = df['new_turn'].fillna(0).cumsum()
+        df['move_number'] = df.index + 1
+        df['game_id'] = game_id
+
+        print(df.head())
 
 #%%
-# b = StoneAge(Firefox())
-# b.login()
+b = StoneAge(Firefox())
+b.login()
 
 
 #%%
 # b.get_recent_game_ids()
-# b.game_info(47528560)
+b.game_info(47528560)
 
 
 #%% debug only
-summary = pickle.load(open('data/results.pkl', 'rb'))
-log = pickle.load(open('data/logs.pkl', 'rb'))
-
-
-# debug_logs = [re.sub(r'\d', 'i', x.text).replace('RoSCargam', 'player').replace('angarna', 'player') for x in log]
-# debug_set = sorted(set(debug_logs))
+# summary_results = pickle.load(open('data/results.pkl', 'rb'))
+# logs = pickle.load(open('data/logs.pkl', 'rb'))
+#
+# player_order = [x[0:x.find(' is')] for x in logs if 'is now first player' in x][0:3]
+#
+# player_order.insert(0, 'end') # Covers the end of the game flag
+#
+# player_nums = [player_order.index(set(x.split()).intersection(set(player_order)).pop()) for x in logs][:]
+# player_order.pop(0)
+#
+# for player in player_order:
+#     logs = [x.replace(player, 'player') for x in logs]
+#
+# values = [int((re.findall('\d+', x) or [-1])[0]) for x in logs]
+#
+# logs = [re.sub(r'\d+', 'i', x) for x in logs]
+#
+# df = pd.DataFrame({
+#     'player_number': player_nums,
+#     'value': values,
+#     'action_name': logs,
+# })
