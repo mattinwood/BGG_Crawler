@@ -69,14 +69,17 @@ class StoneAge:
         else:
             print("Already logged in")
 
-    # TODO: Fix getting new game_ids
-    # TODO: Remove any currently in database
     def get_recent_game_ids(self):
         url = 'http://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
         self.browser.get(url)
 
         for game in self.browser.find_elements_by_class_name('gamename'):
             self.game_ids.add(game.find_element_by_xpath('..').get_property('href')[44:])
+
+        loaded = set(pd.read_sql('select distinct game_id from bgg.game_summary',
+                                 engine_builder())['game_id'])
+        self.game_ids.difference(loaded)
+        self.write_new_game_ids()
 
     def write_new_game_ids(self):
         with open('data/new_games.yaml', 'w') as outfile:
@@ -160,7 +163,7 @@ class StoneAge:
             elif 'end of the game' in x.lower():
                 player_nums.append(-1)
 
-            elif 'end of the game' in x.lower():
+            elif 'rematch' in x.lower():
                 player_nums.append(-1)
 
             else:
@@ -187,6 +190,10 @@ class StoneAge:
         log_df['game_id'] = game_id
         log_df = log_df.drop('new_turn', axis=1)
 
+        for key in summary_results.keys():
+            if len(summary_results[key]) == 0:
+                summary_results[key] = [None] * len(summary_results['Player Names'])
+
         summary_df = pd.DataFrame(summary_results)
         summary_df.columns = summary_df.columns.str.replace("'", "").str.lower().str.replace(' ', '_')
         summary_df['game_id'] = game_id
@@ -195,11 +202,11 @@ class StoneAge:
         summary_df.to_sql('game_summary', engine_builder(), schema='bgg', if_exists='append', index=False)
 
         self.game_ids.remove(game_id)
+        b.write_new_game_ids()
 
 
 #%%
 if __name__ == '__main__':
-    #TODO: Game 47905175 isn't working
     b = StoneAge(Firefox())
     b.get_recent_game_ids()
     b.login()
@@ -209,4 +216,4 @@ if __name__ == '__main__':
         b.game_info(g_id)
         sleep(1)
     b.browser.close()
-    b.write_new_game_ids()
+
