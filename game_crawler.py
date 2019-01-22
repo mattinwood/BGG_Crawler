@@ -10,6 +10,7 @@ import re
 import yaml
 
 
+# TODO: Documentation
 AURORA_HOST = 'inwood-analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
 AURORA_DB = 'analytics'
 AURORA_PORT = '3306'
@@ -67,7 +68,9 @@ class StoneAge:
             self.browser.find_element_by_id("login_button").click()
         else:
             print("Already logged in")
-    
+
+    # TODO: Fix getting new game_ids
+    # TODO: Remove any currently in database
     def get_recent_game_ids(self):
         url = 'http://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
         self.browser.get(url)
@@ -150,8 +153,16 @@ class StoneAge:
 
         player_nums = []
         for x in logs:
-            if 'end' in x:
+            if 'chose to abandon' in x.lower():
+                self.game_ids.remove(game_id)
+                return
+
+            elif 'end of the game' in x.lower():
                 player_nums.append(-1)
+
+            elif 'end of the game' in x.lower():
+                player_nums.append(-1)
+
             else:
                 for i in range(len(player_order)):
                     if x.find(player_order[i]) >= 0:
@@ -188,13 +199,14 @@ class StoneAge:
 
 #%%
 if __name__ == '__main__':
+    #TODO: Game 47905175 isn't working
     b = StoneAge(Firefox())
     b.get_recent_game_ids()
     b.login()
 
-    working_list = b.game_ids
+    working_list = list(b.game_ids)[:]
     for g_id in working_list:
         b.game_info(g_id)
-        sleep(2)
+        sleep(1)
     b.browser.close()
     b.write_new_game_ids()
