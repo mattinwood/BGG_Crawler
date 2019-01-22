@@ -3,10 +3,29 @@ from seleniumrequests import Firefox
 from selenium.common.exceptions import NoSuchElementException
 from time import sleep
 from os import getenv
+from sqlalchemy import create_engine, engine
 import pandas as pd
 import pickle
 import re
 import yaml
+
+
+AURORA_HOST = 'inwood-analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
+AURORA_DB = 'analytics'
+AURORA_PORT = '3306'
+AURORA_USER = getenv('AURORA_USER')
+AURORA_PASS = getenv('AURORA_PASS')
+
+
+def engine_builder():
+    db_connect_url = engine.url.URL(
+        drivername='mysql',
+        username=AURORA_USER,
+        password=AURORA_PASS,
+        host=AURORA_HOST,
+        port=AURORA_PORT,
+        database=AURORA_DB)
+    return create_engine(db_connect_url)
 
 
 #%%
@@ -127,12 +146,16 @@ class StoneAge:
         pickle.dump(logs, open('data/logs.pkl', 'wb'))
 
         # Log Cleanup
-        player_order = [x[0:x.find(' is')] for x in logs if 'is now first player' in x][0:3]
+        player_order = list(set([x[0:x.find(' is')] for x in logs if 'is now first player' in x][0:4]))
 
-        player_order.insert(0, 'end') # Covers the end of the game flag
-
-        player_nums = [player_order.index(set(x.split()).intersection(set(player_order)).pop()) for x in logs][:]
-        player_order.pop(0)
+        player_nums = []
+        for x in logs:
+            if 'end' in x:
+                player_nums.append(-1)
+            else:
+                for i in range(len(player_order)):
+                    if x.find(player_order[i]) >= 0:
+                        player_nums.append(i)
 
         for player in player_order:
             logs = [x.replace(player, 'player') for x in logs]
@@ -141,49 +164,37 @@ class StoneAge:
 
         logs = [re.sub(r'\d', 'i', x) for x in logs]
 
-        df = pd.DataFrame({
+        log_df = pd.DataFrame({
             'player_number': player_nums,
             'value': values,
             'action_name': logs,
         })
 
-        df.loc[df['action_name'] == 'player is now first player', 'new_turn'] = 1
-        df['turn_number'] = df['new_turn'].fillna(0).cumsum()
-        df['move_number'] = df.index + 1
-        df['game_id'] = game_id
+        log_df.loc[log_df['action_name'] == 'player is now first player', 'new_turn'] = 1
+        log_df['turn_number'] = log_df['new_turn'].fillna(0).cumsum()
+        log_df['move_number'] = log_df.index + 1
+        log_df['game_id'] = game_id
+        log_df = log_df.drop('new_turn', axis=1)
 
-        print(df.head())
+        summary_df = pd.DataFrame(summary_results)
+        summary_df.columns = summary_df.columns.str.replace("'", "").str.lower().str.replace(' ', '_')
+        summary_df['game_id'] = game_id
+
+        log_df.to_sql('game_logs', engine_builder(), schema='bgg', if_exists='append', index=False)
+        summary_df.to_sql('game_summary', engine_builder(), schema='bgg', if_exists='append', index=False)
+
+        self.game_ids.remove(game_id)
+
 
 #%%
-b = StoneAge(Firefox())
-b.login()
+if __name__ == '__main__':
+    b = StoneAge(Firefox())
+    b.get_recent_game_ids()
+    b.login()
 
-
-#%%
-# b.get_recent_game_ids()
-b.game_info(47528560)
-
-
-#%% debug only
-# summary_results = pickle.load(open('data/results.pkl', 'rb'))
-# logs = pickle.load(open('data/logs.pkl', 'rb'))
-#
-# player_order = [x[0:x.find(' is')] for x in logs if 'is now first player' in x][0:3]
-#
-# player_order.insert(0, 'end') # Covers the end of the game flag
-#
-# player_nums = [player_order.index(set(x.split()).intersection(set(player_order)).pop()) for x in logs][:]
-# player_order.pop(0)
-#
-# for player in player_order:
-#     logs = [x.replace(player, 'player') for x in logs]
-#
-# values = [int((re.findall('\d+', x) or [-1])[0]) for x in logs]
-#
-# logs = [re.sub(r'\d+', 'i', x) for x in logs]
-#
-# df = pd.DataFrame({
-#     'player_number': player_nums,
-#     'value': values,
-#     'action_name': logs,
-# })
+    working_list = b.game_ids
+    for g_id in working_list:
+        b.game_info(g_id)
+        sleep(2)
+    b.browser.close()
+    b.write_new_game_ids()
