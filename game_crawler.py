@@ -1,31 +1,35 @@
 #%%
-from seleniumrequests import Firefox
+from selenium import webdriver
+from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 from time import sleep
-from os import getenv
+from os import getenv, mkdir, path
 from sqlalchemy import create_engine, engine
 import pandas as pd
+from pyvirtualdisplay import Display
 import pickle
 import re
 import yaml
 
 
 # TODO: Documentation
-AURORA_HOST = 'inwood-analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
-AURORA_DB = 'analytics'
-AURORA_PORT = '3306'
-AURORA_USER = getenv('AURORA_USER')
-AURORA_PASS = getenv('AURORA_PASS')
+HOST = 'analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
+PORT = '3306'
+USER = getenv('MARIA_USER')
+PASS = getenv('MARIA_PASS')
 
 
 def engine_builder():
     db_connect_url = engine.url.URL(
         drivername='mysql',
-        username=AURORA_USER,
-        password=AURORA_PASS,
-        host=AURORA_HOST,
-        port=AURORA_PORT,
-        database=AURORA_DB)
+        username=USER,
+        password=PASS,
+        host=HOST,
+        port=PORT,
+    )
     return create_engine(db_connect_url)
 
 
@@ -33,20 +37,27 @@ def engine_builder():
 class StoneAge:
     def __init__(self, browser):
         self.browser = browser
-        self.browser.get('http://en.boardgamearena.com')
+        self.browser.get('https://en.boardgamearena.com')
+        self.wait = WebDriverWait(self.browser, 10)
+
+        if not path.exists('data/'):
+            mkdir('data')
 
         try:
             self.read_unparsed_game_ids()
+            if not self.game_ids:
+                raise FileNotFoundError
         except FileNotFoundError:
+            print('File Not Found')
             self.game_ids = set()
             open('data/new_games.yaml', 'a').close()
 
     def login(self):
         if 'boardgamearena.com' not in self.browser.current_url:
-            self.browser.get('http://en.boardgamearena.com')
+            self.browser.get('https://en.boardgamearena.com')
 
         try:
-            if not self.browser.find_element_by_id('login-status').text:
+            if not self.browser.find_element_by_id('connected_username').text:
                 logged_in = False
             else:
                 logged_in = True
@@ -65,16 +76,22 @@ class StoneAge:
             password = self.browser.find_element_by_id("password_input")
             password.send_keys(getenv('BGG_PASS'))
 
-            self.browser.find_element_by_id("login_button").click()
+
+            login = self.browser.find_element_by_id("login_button")
+            login.click()
+            self.wait.until(EC.staleness_of(login))
         else:
             print("Already logged in")
 
+
     def get_recent_game_ids(self):
-        url = 'http://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
+        url = 'https://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
         self.browser.get(url)
 
         for game in self.browser.find_elements_by_class_name('gamename'):
-            self.game_ids.add(game.find_element_by_xpath('..').get_property('href')[44:])
+            s = game.find_element_by_xpath('..').get_property('href')
+            s[s.find('table=') + 6:]
+            self.game_ids.add(s)
 
         loaded = set(pd.read_sql('select distinct game_id from bgg.game_summary',
                                  engine_builder())['game_id'])
@@ -143,7 +160,7 @@ class StoneAge:
 
     def game_info(self, game_id):
         results_url = 'https://en.boardgamearena.com/#!table?table={0}'
-        replay_url = 'http://en.boardgamearena.com/#!gamereview?table={0}'
+        replay_url = 'https://en.boardgamearena.com/#!gamereview?table={0}'
 
         summary_results = self.game_results(results_url.format(game_id))
         pickle.dump(summary_results, open('data/results.pkl', 'wb'))
@@ -166,7 +183,13 @@ class StoneAge:
             elif 'rematch' in x.lower():
                 player_nums.append(-1)
 
+            elif 'colors of' in x.lower():
+                player_nums.append(-1)
+
             else:
+                if 'out of time' in x.lower():
+                    x = x[0:x.find('out of time') + 11]
+
                 for i in range(len(player_order)):
                     if x.find(player_order[i]) >= 0:
                         player_nums.append(i)
@@ -205,15 +228,25 @@ class StoneAge:
         b.write_new_game_ids()
 
 
-#%%
+
+
 if __name__ == '__main__':
-    b = StoneAge(Firefox())
-    b.get_recent_game_ids()
+    try:
+        display = Display(visible=0, size=(1366, 768))
+        display.start()
+    except:
+        pass
+
+    b = StoneAge(webdriver.Firefox())
     b.login()
 
-    working_list = list(b.game_ids)[:]
-    for g_id in working_list:
-        b.game_info(g_id)
-        sleep(1)
-    b.browser.close()
+    # b.get_recent_game_ids()
+    #
+    # working_list = list(b.game_ids)[:]
+    # for g_id in working_list:
+    #     b.game_info(g_id)
+    #     sleep(1)
+    #     break
+    #
+    # b.browser.close()
 
