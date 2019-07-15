@@ -48,7 +48,7 @@ class StoneAge:
             if not self.game_ids:
                 raise FileNotFoundError
         except FileNotFoundError:
-            print('File Not Found')
+            print('Existing Games ID File Not Found')
             self.game_ids = set()
             open('data/new_games.yaml', 'a').close()
 
@@ -83,15 +83,18 @@ class StoneAge:
         else:
             print("Already logged in")
 
-
     def get_recent_game_ids(self):
         url = 'https://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
         self.browser.get(url)
 
         for game in self.browser.find_elements_by_class_name('gamename'):
             s = game.find_element_by_xpath('..').get_property('href')
-            s[s.find('table=') + 6:]
-            self.game_ids.add(s)
+            print(s)
+            s = s[s.find('table=') + 6:]
+            try:
+                self.game_ids.add(int(s))
+            except ValueError:
+                pass
 
         loaded = set(pd.read_sql('select distinct game_id from bgg.game_summary',
                                  engine_builder())['game_id'])
@@ -159,13 +162,13 @@ class StoneAge:
         return actions
 
     def game_info(self, game_id):
-        results_url = 'https://en.boardgamearena.com/#!table?table={0}'
-        replay_url = 'https://en.boardgamearena.com/#!gamereview?table={0}'
+        results_url = f'https://en.boardgamearena.com/#!table?table={game_id}'
+        replay_url = f'https://en.boardgamearena.com/#!gamereview?table={game_id}'
 
-        summary_results = self.game_results(results_url.format(game_id))
+        summary_results = self.game_results(results_url)
         pickle.dump(summary_results, open('data/results.pkl', 'wb'))
 
-        logs = self.game_logs(replay_url.format(game_id))
+        logs = self.game_logs(replay_url)
         pickle.dump(logs, open('data/logs.pkl', 'wb'))
 
         # Log Cleanup
@@ -225,28 +228,23 @@ class StoneAge:
         summary_df.to_sql('game_summary', engine_builder(), schema='bgg', if_exists='append', index=False)
 
         self.game_ids.remove(game_id)
-        b.write_new_game_ids()
+        self.write_new_game_ids()
 
 
-
-
+#%%
 if __name__ == '__main__':
-    try:
-        display = Display(visible=0, size=(1366, 768))
-        display.start()
-    except:
-        pass
+    display = Display(visible=0, size=(1366, 768))
+    display.start()
 
     b = StoneAge(webdriver.Firefox())
     b.login()
 
-    # b.get_recent_game_ids()
-    #
-    # working_list = list(b.game_ids)[:]
-    # for g_id in working_list:
-    #     b.game_info(g_id)
-    #     sleep(1)
-    #     break
-    #
-    # b.browser.close()
+    b.get_recent_game_ids()
 
+    working_list = list(b.game_ids)[:] # We alter b.game_ids, so we can't use it as the iterator
+    for g_id in working_list:
+        b.game_info(g_id)
+        sleep(1)
+        break
+
+    b.browser.close()
