@@ -5,9 +5,10 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from time import sleep
 from os import getenv, mkdir, path
+from random import choice
 from sqlalchemy import create_engine, engine
+from slack import WebClient
 import pandas as pd
 from pyvirtualdisplay import Display
 import pickle
@@ -15,7 +16,6 @@ import re
 import yaml
 
 
-# TODO: Documentation
 HOST = 'analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
 PORT = '3306'
 USER = getenv('MARIA_USER')
@@ -33,12 +33,20 @@ def engine_builder():
     return create_engine(db_connect_url)
 
 
+def slack_message(body):
+    sc = WebClient(getenv('SLACK_TOKEN'))
+    sc.chat_postMessage(
+        channel='scheduled-jobs',
+        text=body,
+        username='StoneAge')
+
+
 #%%
 class StoneAge:
     def __init__(self, browser):
         self.browser = browser
         self.browser.get('https://en.boardgamearena.com')
-        self.wait = WebDriverWait(self.browser, 10)
+        self.wait = WebDriverWait(self.browser, 30)
 
         if not path.exists('data/'):
             mkdir('data')
@@ -62,7 +70,7 @@ class StoneAge:
             else:
                 logged_in = True
         except NoSuchElementException:
-                logged_in = False
+            logged_in = False
 
         if not logged_in:
             login_url = 'http://en.boardgamearena.com/#!account?redirect=headlines'
@@ -75,7 +83,6 @@ class StoneAge:
             self.browser.find_element_by_id("password_input").clear()
             password = self.browser.find_element_by_id("password_input")
             password.send_keys(getenv('BGG_PASS'))
-
 
             login = self.browser.find_element_by_id("login_button")
             login.click()
@@ -110,14 +117,8 @@ class StoneAge:
             self.game_ids = yaml.load(stream)
 
     def game_results(self, url):
-        loaded = False
         self.browser.get(url)
-        while not loaded:
-            try:
-                self.browser.find_element_by_id('player_stats_table')
-                loaded = True
-            except NoSuchElementException:
-                sleep(0.5)
+        self.wait.until(EC.presence_of_element_located((By.ID, 'player_stats_table')))
 
         table = self.browser.find_element_by_id('player_stats_table')
         results = {}
@@ -146,14 +147,8 @@ class StoneAge:
         return results
 
     def game_logs(self, url):
-        loaded = False
         self.browser.get(url)
-        while not loaded:
-            try:
-                self.browser.find_element_by_id('gamelogs')
-                loaded = True
-            except NoSuchElementException:
-                sleep(0.5)
+        self.wait.until(EC.presence_of_element_located((By.ID, 'gamelogs')))
 
         game = self.browser.find_element_by_id('gamelogs')
         actions = game.find_elements_by_class_name('gamelogreview')
@@ -162,6 +157,7 @@ class StoneAge:
         return actions
 
     def game_info(self, game_id):
+        slack_message(f'Loading game ID {game_id}')
         results_url = f'https://en.boardgamearena.com/#!table?table={game_id}'
         replay_url = f'https://en.boardgamearena.com/#!gamereview?table={game_id}'
 
@@ -230,6 +226,8 @@ class StoneAge:
         self.game_ids.remove(game_id)
         self.write_new_game_ids()
 
+        slack_message(f'loaded game ID {game_id}')
+
 
 #%%
 if __name__ == '__main__':
@@ -241,10 +239,12 @@ if __name__ == '__main__':
 
     b.get_recent_game_ids()
 
-    working_list = list(b.game_ids)[:] # We alter b.game_ids, so we can't use it as the iterator
-    for g_id in working_list:
-        b.game_info(g_id)
-        sleep(1)
-        break
+    # playing around with rate limits, so using random for now.
+    b.game_info(choice(list(b.game_ids)))
+
+    # working_list = list(b.game_ids)[:]
+    # for g_id in working_list:
+    #     b.game_info(g_id)
+    #     break
 
     b.browser.close()

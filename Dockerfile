@@ -1,19 +1,16 @@
 FROM ubuntu:bionic
 
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip \
+    python3 python3-pip python3-mysqldb \
     fonts-liberation libappindicator3-1 libasound2 libatk-bridge2.0-0 \
     libnspr4 libnss3 lsb-release xdg-utils libxss1 libdbus-glib-1-2 \
     curl unzip wget \
     xvfb
 
-RUN apt-get install -y python3-mysqldb
-
 ADD . /app
 WORKDIR /app
 
 # install geckodriver and firefox
-
 RUN GECKODRIVER_VERSION=`curl https://github.com/mozilla/geckodriver/releases/latest | grep -Po 'v[0-9]+.[0-9]+.[0-9]+'` && \
     wget https://github.com/mozilla/geckodriver/releases/download/$GECKODRIVER_VERSION/geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz && \
     tar -zxf geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz -C /usr/local/bin && \
@@ -27,8 +24,7 @@ RUN FIREFOX_SETUP=firefox-setup.tar.bz2 && \
     ln -s /opt/firefox/firefox /usr/bin/firefox && \
     rm $FIREFOX_SETUP
 
-RUN apt-get update
-RUN pip3 install --upgrade pip
-
+# Python pip and run main file
 RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt
+CMD python3 game_crawler.py

@@ -3,3 +3,4 @@ SQLAlchemy==1.2.16
 pandas==0.23.4
 PyVirtualDisplay==0.2.3
 selenium==3.141.0
+slackclient==2.1.0
