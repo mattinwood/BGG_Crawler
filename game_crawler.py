@@ -13,6 +13,7 @@ import pandas as pd
 from pyvirtualdisplay import Display
 import pickle
 import re
+import traceback
 import yaml
 
 
@@ -228,9 +229,7 @@ class StoneAge:
 
         slack_message(f'loaded game ID {game_id}')
 
-
-#%%
-if __name__ == '__main__':
+def main():
     display = Display(visible=0, size=(1366, 768))
     display.start()
 
@@ -248,3 +247,11 @@ if __name__ == '__main__':
     #     break
 
     b.browser.close()
+
+#%%
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as e:
+        slack_message(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+
