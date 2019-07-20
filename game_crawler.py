@@ -34,10 +34,10 @@ def engine_builder():
     return create_engine(db_connect_url)
 
 
-def slack_message(body: str):
+def slack_message(body: str, channel: str):
     sc = WebClient(getenv('SLACK_TOKEN'))
     sc.chat_postMessage(
-        channel='scheduled-jobs',
+        channel=channel,
         text=body,
         username='StoneAge')
 
@@ -191,7 +191,7 @@ class StoneAge:
         '''
 
         # Sends slack notification that job has begun; creates url Strings
-        slack_message(f'Loading game ID {game_id}')
+        slack_message(f'Loading game ID {game_id}', 'scheduled-jobs')
         results_url = f'https://en.boardgamearena.com/#!table?table={game_id}'
         replay_url = f'https://en.boardgamearena.com/#!gamereview?table={game_id}'
 
@@ -212,6 +212,7 @@ class StoneAge:
             # Abandoned games are discarded.
             if 'chose to abandon' in x.lower():
                 self.game_ids.remove(game_id)
+                slack_message('game abandoned', 'scheduled-jobs')
                 return
 
             # These log items do not have any game impact and/or are not specific to a player
@@ -276,7 +277,7 @@ class StoneAge:
         self.game_ids.remove(game_id)
         self.write_new_game_ids()
 
-        slack_message(f'Loaded game ID {game_id}')
+        slack_message(f'Loaded game ID {game_id}', 'scheduled-jobs')
 
 def main():
     # Initializes the display for headless use.
@@ -301,8 +302,9 @@ def main():
 
 #%%
 if __name__ == '__main__':
+    # TODO: Seperate slack for error logging
     try:
         main()
     except Exception as e:
-        slack_message(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+        slack_message(''.join(traceback.format_exception(type(e), e, e.__traceback__)), 'job-errors')
 
