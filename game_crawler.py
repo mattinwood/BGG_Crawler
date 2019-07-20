@@ -219,6 +219,9 @@ class StoneAge:
             elif 'end of the game' in x.lower():
                 player_nums.append(-1)
 
+            elif 'end of game' in x.lower():
+                player_nums.append(-1)
+
             elif 'rematch' in x.lower():
                 player_nums.append(-1)
 
