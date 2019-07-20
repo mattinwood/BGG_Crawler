@@ -271,6 +271,8 @@ class StoneAge:
         summary_df = pd.DataFrame(summary_results)
         summary_df.columns = summary_df.columns.str.replace("'", "").str.lower().str.replace(' ', '_')
         summary_df['game_id'] = game_id
+        summary_df['player_idx'] = [player_order.index(x) for x in summary_results['Player Names']]
+
 
         # Writes tables to the database.
         log_df.to_sql('game_logs', engine_builder(), schema='bgg', if_exists='append', index=False)
