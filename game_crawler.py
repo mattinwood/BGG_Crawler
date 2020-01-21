@@ -6,8 +6,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from os import getenv, mkdir, path
+import pugsql
 from random import choice
-from sqlalchemy import create_engine, engine
+from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL
+# noinspection PyPackageRequirements
 from slack import WebClient
 import pandas as pd
 from pyvirtualdisplay import Display
@@ -23,15 +26,18 @@ USER = getenv('MARIA_USER')
 PASS = getenv('MARIA_PASS')
 
 
-def engine_builder():
-    db_connect_url = engine.url.URL(
+def engine_builder(engine=True):
+    db_connect_url = URL(
         drivername='mysql',
         username=USER,
         password=PASS,
         host=HOST,
         port=PORT,
     )
-    return create_engine(db_connect_url)
+    if engine:
+        return create_engine(db_connect_url)
+    else:
+        return db_connect_url
 
 
 def slack_message(body: str, channel: str):
@@ -45,11 +51,11 @@ def slack_message(body: str, channel: str):
 #%%
 class StoneAge:
     def __init__(self, browser):
-        '''
+        """
         Initialized class variables, including existing game list from stored file.
 
         :param browser: Selenium webdriver object
-        '''
+        """
         self.browser = browser
         self.browser.get('https://en.boardgamearena.com')
         self.wait = WebDriverWait(self.browser, 30)
@@ -68,9 +74,9 @@ class StoneAge:
             open('data/new_games.yaml', 'a').close()
 
     def login(self):
-        '''
+        """
         Checks if user is logged in, and if not, go to login page and enter credentials.
-        '''
+        """
         if 'boardgamearena.com' not in self.browser.current_url:
             self.browser.get('https://en.boardgamearena.com')
 
@@ -101,10 +107,10 @@ class StoneAge:
             print("Already logged in")
 
     def get_recent_game_ids(self):
-        '''
+        """
         Goes to recent results page and extracts the game IDs from the top list.
         Checks for uniqueness against loaded YAML file, and subtracts game IDs existing in the DB.
-        '''
+        """
         url = 'https://en.boardgamearena.com/#!gamepanel?game=stoneage&section=lastresults'
         self.browser.get(url)
 
@@ -123,9 +129,9 @@ class StoneAge:
         self.write_new_game_ids()
 
     def write_new_game_ids(self):
-        '''
+        """
         Writes game IDs to YAML file for future extraction.
-        '''
+        """
         with open('data/new_games.yaml', 'w') as outfile:
             yaml.dump(self.game_ids, outfile)
 
@@ -134,11 +140,11 @@ class StoneAge:
             self.game_ids = yaml.load(stream)
 
     def game_results(self, url: str):
-        '''
+        """
         Converts the table in the results screen to a dictionary.
         :param url: Formatted url for the game summary
         :return: Dictionary of the results table
-        '''
+        """
         self.browser.get(url)
         self.wait.until(EC.presence_of_element_located((By.ID, 'player_stats_table')))
         results = {}
@@ -171,10 +177,10 @@ class StoneAge:
         return results
 
     def game_logs(self, url: str):
-        '''
+        """
         :param url: Formatted url for the game replay
         :return: Raw list of actions taken during the game
-        '''
+        """
         self.browser.get(url)
         self.wait.until(EC.presence_of_element_located((By.ID, 'gamelogs')))
 
@@ -185,10 +191,10 @@ class StoneAge:
         return actions
 
     def game_info(self, game_id: int):
-        '''
+        """
         Main function for transforming the game summary and logs. Also outputs to Database.
         :param game_id: Integer for the game ID, used for identification and for urls.
-        '''
+        """
 
         # Sends slack notification that job has begun; creates url Strings
         slack_message(f'Loading game ID {game_id}', 'scheduled-jobs')
@@ -273,16 +279,27 @@ class StoneAge:
         summary_df['game_id'] = game_id
         summary_df['player_idx'] = [player_order.index(x) for x in summary_results['Player Names']]
 
+        if (log_df.isnull().values.any()) or (summary_df.isnull().values.any()):
+            slack_message(f'Missing data found in tables:\n{summary_df}', 'job-errors')
+            return
 
         # Writes tables to the database.
-        log_df.to_sql('game_logs', engine_builder(), schema='bgg', if_exists='append', index=False)
-        summary_df.to_sql('game_summary', engine_builder(), schema='bgg', if_exists='append', index=False)
+        pugsql.get_modules().clear()
+        queries = pugsql.module('sql/')
+        queries.connect(engine_builder(engine=False))
+
+        log_row_ct = queries.insert_logs(log_df.to_dict(orient='records'))
+        summary_row_ct = queries.insert_summary(summary_df.to_dict(orient='records'))
 
         # Removes completed game ID from the list and writes local list of recent game IDs.
         self.game_ids.remove(game_id)
         self.write_new_game_ids()
 
-        slack_message(f'Loaded game ID {game_id}', 'scheduled-jobs')
+        slack_message(f'Loaded game ID {game_id}'
+                      f'\n{summary_row_ct} rows added to summary'
+                      f'\n{log_row_ct} rows added to logs',
+                      'scheduled-jobs')
+
 
 def main():
     # Initializes the display for headless use.
@@ -305,9 +322,9 @@ def main():
 
     b.browser.close()
 
+
 #%%
 if __name__ == '__main__':
-    # TODO: Seperate slack for error logging
     try:
         main()
     except Exception as e:
