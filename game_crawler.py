@@ -272,6 +272,9 @@ class StoneAge:
         for key in summary_results.keys():
             if len(summary_results[key]) == 0:
                 summary_results[key] = [None] * len(summary_results['Player Names'])
+            if ((len(summary_results[key]) == 2 * len(summary_results['Player Names'])
+                and key == 'winpoints')):
+                summary_results[key] = [x.strip() for x in summary_results[key] if len(x) > 0]
 
         # Converts summary results into a DataFrame and does some string cleanup.
         summary_df = pd.DataFrame(summary_results)
