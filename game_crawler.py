@@ -1,7 +1,7 @@
 #%%
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -17,7 +17,6 @@ from pyvirtualdisplay import Display
 import pickle
 import re
 import traceback
-import yaml
 
 
 HOST = 'analytics.cnnfhkgooetn.us-west-2.rds.amazonaws.com'
@@ -64,14 +63,7 @@ class StoneAge:
         if not path.exists('data/'):
             mkdir('data')
         # If an existing list of games is present, read it in. Else, create an empty file.
-        try:
-            self.read_unparsed_game_ids()
-            if not self.game_ids:
-                raise FileNotFoundError
-        except FileNotFoundError:
-            print('Existing Games ID File Not Found')
-            self.game_ids = set()
-            open('data/new_games.yaml', 'a').close()
+        self.game_ids = set()
 
     def login(self):
         """
@@ -126,18 +118,6 @@ class StoneAge:
         loaded = set(pd.read_sql('select distinct game_id from bgg.game_summary',
                                  engine_builder())['game_id'])
         self.game_ids.difference(loaded)
-        self.write_new_game_ids()
-
-    def write_new_game_ids(self):
-        """
-        Writes game IDs to YAML file for future extraction.
-        """
-        with open('data/new_games.yaml', 'w') as outfile:
-            yaml.dump(self.game_ids, outfile)
-
-    def read_unparsed_game_ids(self):
-        with open("data/new_games.yaml", 'r') as stream:
-            self.game_ids = yaml.load(stream)
 
     def game_results(self, url: str):
         """
@@ -172,6 +152,7 @@ class StoneAge:
         results['new_rank'] = newranks
 
         winpoints = [x.text for x in panel.find_elements_by_class_name('winpoints')]
+        # TODO: winpointsarena needs to be excluded
         results['winpoints'] = winpoints
 
         return results
@@ -273,7 +254,7 @@ class StoneAge:
             if len(summary_results[key]) == 0:
                 summary_results[key] = [None] * len(summary_results['Player Names'])
             if ((len(summary_results[key]) == 2 * len(summary_results['Player Names'])
-                and key == 'winpoints')):
+                 and key == 'winpoints')):
                 summary_results[key] = [x.strip() for x in summary_results[key] if len(x) > 0]
 
         # Converts summary results into a DataFrame and does some string cleanup.
@@ -296,7 +277,6 @@ class StoneAge:
 
         # Removes completed game ID from the list and writes local list of recent game IDs.
         self.game_ids.remove(game_id)
-        self.write_new_game_ids()
 
         slack_message(f'Loaded game ID {game_id}'
                       f'\n{summary_row_ct} rows added to summary'
@@ -305,31 +285,32 @@ class StoneAge:
 
 
 def main():
-    # Initializes the display for headless use.
-    display = Display(visible=0, size=(1366, 768))
-    display.start()
-
     # Instantiates the browser and logs in.
-    b = StoneAge(webdriver.Firefox())
-    b.login()
+    if ENV != 'local':
+        # Initializes the display for headless use.
+        display = Display(visible=0, size=(1366, 768))
+        display.start()
+        b = StoneAge(webdriver.Firefox())
+    else:
+        b = StoneAge(webdriver.Firefox(executable_path='/usr/local/bin/geckodriver'))
 
+    b.login()
     b.get_recent_game_ids()
 
     # Select one of the recent games at random and process it.
     b.game_info(choice(list(b.game_ids)))
-
-    # working_list = list(b.game_ids)[:]
-    # for g_id in working_list:
-    #     b.game_info(g_id)
-    #     break
 
     b.browser.close()
 
 
 #%%
 if __name__ == '__main__':
+    ENV = 'cloud'
+
     try:
         main()
+    except TimeoutException:
+        slack_message('Time Out Issue on Site', 'scheduled_jobs')
     except Exception as e:
         slack_message(''.join(traceback.format_exception(type(e), e, e.__traceback__)), 'job-errors')
 
