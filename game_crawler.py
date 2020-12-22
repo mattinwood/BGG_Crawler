@@ -10,7 +10,6 @@ import pugsql
 from random import choice
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
-# noinspection PyPackageRequirements
 from slack import WebClient
 import pandas as pd
 from pyvirtualdisplay import Display
@@ -47,7 +46,6 @@ def slack_message(body: str, channel: str):
         username='StoneAge')
 
 
-#%%
 class StoneAge:
     def __init__(self, browser):
         """
@@ -83,6 +81,9 @@ class StoneAge:
         if not logged_in:
             login_url = 'http://en.boardgamearena.com/#!account?redirect=headlines'
             self.browser.get(login_url)
+
+            self.wait.until(EC.presence_of_element_located((By.ID, 'username_input')))
+            self.wait.until(EC.presence_of_element_located((By.ID, 'password_input')))
 
             self.browser.find_element_by_id("username_input").clear()
             username = self.browser.find_element_by_id("username_input")
@@ -195,7 +196,16 @@ class StoneAge:
 
         # For each log item, assign the player ID.
         player_nums = []
-        for x in logs:
+
+        environment_action_list = [
+            'end of the game',
+            'end of game',
+            'rematch',
+            'colors of',
+            'wild animal',
+        ]
+
+        for ix, x in enumerate(logs):
             # Abandoned games are discarded.
             if 'chose to abandon' in x.lower():
                 self.game_ids.remove(game_id)
@@ -203,16 +213,7 @@ class StoneAge:
                 return
 
             # These log items do not have any game impact and/or are not specific to a player
-            elif 'end of the game' in x.lower():
-                player_nums.append(-1)
-
-            elif 'end of game' in x.lower():
-                player_nums.append(-1)
-
-            elif 'rematch' in x.lower():
-                player_nums.append(-1)
-
-            elif 'colors of' in x.lower():
+            elif any([z in x.lower() for z in environment_action_list]):
                 player_nums.append(-1)
 
             else:
@@ -222,6 +223,12 @@ class StoneAge:
                 for i in range(len(player_order)):
                     if x.find(player_order[i]) >= 0:
                         player_nums.append(i)
+
+            # Check for a player ID otherwise halt program
+            if ix != len(player_nums) - 1:
+                print(ix, len(player_nums))
+                print(player_nums)
+                raise LookupError(f'No player identified for action text: "{x}"')
 
         # Assigns player index/number in place of name in the logs.
         for player in player_order:
@@ -301,7 +308,6 @@ def main():
     b.game_info(choice(list(b.game_ids)))
 
     b.browser.close()
-
 
 #%%
 if __name__ == '__main__':
