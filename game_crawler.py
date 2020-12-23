@@ -309,6 +309,7 @@ def main():
 
     b.browser.close()
 
+
 #%%
 if __name__ == '__main__':
     ENV = 'cloud'
@@ -319,4 +320,3 @@ if __name__ == '__main__':
         slack_message('Time Out Issue on Site', 'scheduled_jobs')
     except Exception as e:
         slack_message(''.join(traceback.format_exception(type(e), e, e.__traceback__)), 'job-errors')
-
