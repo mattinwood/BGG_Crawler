@@ -120,7 +120,7 @@ class StoneAge:
                                  engine_builder())['game_id'])
         self.game_ids.difference(loaded)
 
-    def game_results(self, url: str):
+    def game_results(self, url: str, game_id: int):
         """
         Converts the table in the results screen to a dictionary.
         :param url: Formatted url for the game summary
@@ -148,15 +148,31 @@ class StoneAge:
 
         # Pulls additional game info from other page sources, relative to the player info.
         panel = self.browser.find_element_by_id('game_result_panel')
+        gameconfig = self.browser.find_element_by_id('gameoptions')
 
         newranks = [x.text for x in panel.find_elements_by_class_name('gamerank_value')]
         results['new_rank'] = newranks
 
         winpoints = [x.text for x in panel.find_elements_by_class_name('winpoints')]
-        # TODO: winpointsarena needs to be excluded
+
+        # Removes the arena points until they can be potentially added at a future date.
+        if gameconfig.find_element_by_id('gameoption_201_displayed_value').text == 'Arena mode':
+            winpoints = winpoints[1::2]
+
         results['winpoints'] = winpoints
 
-        return results
+        configs = {
+            'game_id': game_id,
+            'gamespeed': re.sub(r'\W+', ' ', gameconfig.find_element_by_id('gameoption_200_displayed_value').text),
+            'gamespeed_desc': gameconfig.find_element_by_id('gameoption_description_200').text,
+            'harsh_winter': 1 if gameconfig.find_element_by_id('gameoption_100').text == 'On' else 0,
+            'wild_animals': 1 if gameconfig.find_element_by_id('gameoption_101').text == 'On' else 0,
+            'igloos': 1 if gameconfig.find_element_by_id('gameoption_102').text == 'On' else 0,
+            'new_huts': 1 if gameconfig.find_element_by_id('gameoption_103').text == 'On' else 0,
+            'mammoth_herd': 1 if gameconfig.find_element_by_id('gameoption_105').text == 'On' else 0,
+        }
+
+        return results, configs
 
     def game_logs(self, url: str):
         """
@@ -184,7 +200,7 @@ class StoneAge:
         replay_url = f'https://en.boardgamearena.com/#!gamereview?table={game_id}'
 
         # Return and write locally the results data.
-        summary_results = self.game_results(results_url)
+        summary_results, config_options = self.game_results(results_url, game_id)
         pickle.dump(summary_results, open('data/results.pkl', 'wb'))
 
         # Return and write locally the log data.
@@ -203,6 +219,7 @@ class StoneAge:
             'rematch',
             'colors of',
             'wild animal',
+            'reward is discarded',
         ]
 
         for ix, x in enumerate(logs):
@@ -281,6 +298,7 @@ class StoneAge:
 
         log_row_ct = queries.insert_logs(log_df.to_dict(orient='records'))
         summary_row_ct = queries.insert_summary(summary_df.to_dict(orient='records'))
+        config_row_ct = queries.insert_configs(summary_df.to_dict(orient='records'))
 
         # Removes completed game ID from the list and writes local list of recent game IDs.
         self.game_ids.remove(game_id)
@@ -288,6 +306,7 @@ class StoneAge:
         slack_message(f'Loaded game ID {game_id}'
                       f'\n{summary_row_ct} rows added to summary'
                       f'\n{log_row_ct} rows added to logs',
+                      f'\n{config_row_ct} rows added to configs',
                       'scheduled-jobs')
 
 
