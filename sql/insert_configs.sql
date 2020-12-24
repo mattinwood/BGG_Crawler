@@ -1,6 +1,7 @@
 -- :name insert_configs :affected
 insert into bgg.game_configs (
     game_id,
+    game_mode,
     gamespeed,
     gamespeed_desc,
     harsh_winter,
@@ -11,6 +12,7 @@ insert into bgg.game_configs (
 )
 values (
     :game_id,
+    :game_mode,
     :gamespeed,
     :gamespeed_desc,
     :harsh_winter,

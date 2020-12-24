@@ -225,6 +225,7 @@ class StoneAge:
             'colors of',
             'wild animal',
             'reward is discarded',
+            'Tie for taming',
         ]
 
         for ix, x in enumerate(logs):
