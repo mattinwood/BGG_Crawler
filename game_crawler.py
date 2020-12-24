@@ -156,13 +156,18 @@ class StoneAge:
         winpoints = [x.text for x in panel.find_elements_by_class_name('winpoints')]
 
         # Removes the arena points until they can be potentially added at a future date.
-        if gameconfig.find_element_by_id('gameoption_201_displayed_value').text == 'Arena mode':
+        game_mode = gameconfig.find_element_by_id('gameoption_201_displayed_value').text
+        if game_mode == 'Arena mode':
             winpoints = winpoints[1::2]
+        elif game_mode == 'Training mode':
+            winpoints = [None] * len(results['Game result'])
+            results['new_rank'] = [None] * len(results['Game result'])
 
         results['winpoints'] = winpoints
 
         configs = {
             'game_id': game_id,
+            'game_mode': game_mode,
             'gamespeed': re.sub(r'\W+', ' ', gameconfig.find_element_by_id('gameoption_200_displayed_value').text),
             'gamespeed_desc': gameconfig.find_element_by_id('gameoption_description_200').text,
             'harsh_winter': 1 if gameconfig.find_element_by_id('gameoption_100').text == 'On' else 0,
@@ -298,14 +303,14 @@ class StoneAge:
 
         log_row_ct = queries.insert_logs(log_df.to_dict(orient='records'))
         summary_row_ct = queries.insert_summary(summary_df.to_dict(orient='records'))
-        config_row_ct = queries.insert_configs(summary_df.to_dict(orient='records'))
+        config_row_ct = queries.insert_configs(config_options)
 
         # Removes completed game ID from the list and writes local list of recent game IDs.
         self.game_ids.remove(game_id)
 
         slack_message(f'Loaded game ID {game_id}'
                       f'\n{summary_row_ct} rows added to summary'
-                      f'\n{log_row_ct} rows added to logs',
+                      f'\n{log_row_ct} rows added to logs'
                       f'\n{config_row_ct} rows added to configs',
                       'scheduled-jobs')
 
