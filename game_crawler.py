@@ -225,7 +225,7 @@ class StoneAge:
             'colors of',
             'wild animal',
             'reward is discarded',
-            'Tie for taming',
+            'each tamer',
         ]
 
         for ix, x in enumerate(logs):
@@ -240,6 +240,7 @@ class StoneAge:
                 player_nums.append(-1)
 
             else:
+                # TODO: Out of time appears to fail against the player ID check below | game ID 133616759
                 if 'out of time' in x.lower():
                     x = x[0:x.find('out of time') + 11]
 
@@ -293,9 +294,10 @@ class StoneAge:
         summary_df['game_id'] = game_id
         summary_df['player_idx'] = [player_order.index(x) for x in summary_results['Player Names']]
 
-        if (log_df.isnull().values.any()) or (summary_df.isnull().values.any()):
-            slack_message(f'Missing data found in tables:\n{summary_df}', 'job-errors')
-            return
+        # TODO: Identify issues with missing summary data; trying just removing this as a non-issue.
+        # if (log_df.isnull().values.any()) or (summary_df.isnull().values.any()):
+        #     slack_message(f'Missing data found in tables:\n{summary_df}', 'job-errors')
+        #     return
 
         # Writes tables to the database.
         pugsql.get_modules().clear()
